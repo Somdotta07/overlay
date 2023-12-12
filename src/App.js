@@ -1,15 +1,20 @@
-import React from 'react';
+import React, {useState }from 'react';
 import Cam from './Cam'
 import WebcamSegmentation from './WebcamSegmentation'
 import SegmentationComponent from './SegmentationComponent';
 
+
+
 const App = () => {
+
   return (
     <div>
       
-        {/* <Cam /> */}
+        <Cam />
         {/* <WebcamSegmentation/> */}
-        <SegmentationComponent />
+        {/* <SegmentationComponent /> */}
+        
+        
     </div>
   );
 };

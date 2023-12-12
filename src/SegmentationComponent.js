@@ -1,4 +1,3 @@
-// src/components/SegmentationComponent.jsx
 import React, { useRef, useEffect } from 'react';
 import * as mp from '@mediapipe/selfie_segmentation';
 

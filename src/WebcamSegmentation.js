@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import overlayVideo from "./assets/background.webm";
 
 const WebcamSegmentation = () => {
+  const [isCameraOn, setIsCameraOn] = useState(false);
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
   const canvasRef = useRef(null);
@@ -13,10 +14,21 @@ const WebcamSegmentation = () => {
       const constraints = { video: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       videoRef.current.srcObject = stream;
+      setIsCameraOn(true);
     } catch (error) {
       console.error('Error accessing webcam:', error);
     }
   };
+
+  const stopCamera = () => {
+    const stream = videoRef.current.srcObject;
+    const tracks = stream.getTracks();
+    tracks.forEach(track => track.stop());
+    videoRef.current.srcObject = null;
+    setIsCameraOn(false);
+  };
+
+
 
   const setupSelfieSegmentation = async () => {
     try {
@@ -36,35 +48,71 @@ const WebcamSegmentation = () => {
       canvasRef.current.width = videoRef.current.videoWidth;
       canvasRef.current.height = videoRef.current.videoHeight;
 
-      // Ensure overlay video is loaded
-      overlayRef.current.src = overlayVideo;
-      overlayRef.current.play();
-
-      selfieSegmentation.onResults((results) => {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-        // Draw the original image (camera stream)
-        ctx.drawImage(results.image, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-        // Draw the segmentation mask with 'source-over' composite operation
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(results.segmentationMask, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-        // Draw the overlay video
-        ctx.drawImage(overlayRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      // Ensure overlay video is loaded before playing
+      overlayRef.current.addEventListener('loadeddata', () => {
+        overlayRef.current.play();
       });
-      /*-------------------------------------- No Segmentationmask ------------------------------------*/
-      // selfieSegmentation.onResults((results) => {
-      //   const ctx = canvasRef.current.getContext('2d');
-      //   ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-      //   // Draw the original image (camera stream)
-      //   ctx.drawImage(results.image, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-      //   // Draw the overlay video
-      //   ctx.drawImage(overlayRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      // });
+
+      overlayRef.current.src = overlayVideo;
+      selfieSegmentation.onResults((results) => {
+        // Create an off-screen canvas
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        offscreenCanvas.width = canvasRef.current.width;
+        offscreenCanvas.height = canvasRef.current.height;
+
+        // Draw the segmentation mask without any blending mode A
+        offscreenCtx.drawImage(results.segmentationMask, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+        offscreenCtx.save();
+        //Camera Stream
+        const imageDataMask = offscreenCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+        const dataMask = imageDataMask.data;
+
+        offscreenCtx.globalCompositeOperation = "source-over";
+
+        // Draw the original image (camera stream)
+        offscreenCtx.drawImage(results.image, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+
+
+        const imageDataOrg = offscreenCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+        const dataOrg = imageDataOrg.data;
+
+
+        // Draw the Overlay(camera stream)
+
+        offscreenCtx.drawImage(overlayRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+
+        offscreenCtx.restore();
+
+        // Get the image data of the entire canvas
+        const imageData = offscreenCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+        // Access the pixel data
+        const data = imageData.data;
+
+        // Define the RGB values for the red color you want to make transparent
+        const red = 0;
+        const green = 0;
+        const blue = 0;
+
+        // Loop through each pixel and set the alpha value to 0 for the red color
+        for (let i = 0; i < dataMask.length; i += 4) {
+          if (dataMask[i] > red && dataMask[i + 1] === green && dataMask[i + 2] === blue) {
+
+            data[i] = dataOrg[i]; data[i + 1] = dataOrg[i + 1]; data[i + 2] = dataOrg[i + 2];
+          }
+        }
+
+        // Put the modified image data back onto the canvas
+        offscreenCtx.putImageData(imageData, 0, 0);
+
+        ctx.drawImage(offscreenCanvas, 0, 0);
+
+
+      });
     } catch (error) {
       console.error('Error initializing SelfieSegmentation:', error);
     }
@@ -94,48 +142,44 @@ const WebcamSegmentation = () => {
     }
   };
 
+
   useEffect(() => {
     const setup = async () => {
-      await startCamera();
-      await setupSelfieSegmentation();
-      videoRef.current.play();
+      if (isCameraOn) {
+        await setupSelfieSegmentation();
+        videoRef.current.play();
 
-      // Play overlay video when the camera stream is ready
-      videoRef.current.addEventListener('play', () => {
-        overlayRef.current.play();
-      });
+        const intervalId = setInterval(segmentFrame, 1000 / 30);
 
-      const intervalId = setInterval(segmentFrame, 1000 / 30); // Update segmentation every 30 frames (adjust as needed)
+        // Cleanup function
+        return () => {
+          clearInterval(intervalId);
 
-      // Cleanup function
-      return () => {
-        clearInterval(intervalId);
-        if (selfieSegmentation) {
-          selfieSegmentation.close();
-        }
-      };
+          if (selfieSegmentation) {
+            selfieSegmentation.close();
+          }
+        };
+      }
     };
 
     setup();
-  }, []);
+  }, [isCameraOn]);
 
   return (
     <div>
-      <video ref={videoRef} width="640" height="480" autoPlay playsInline muted style={{ display: "none"}}></video>
+      <video ref={videoRef} width="640" height="480" autoPlay playsInline muted style={{ display: 'none' }}></video>
       <video ref={overlayRef} style={{ display: 'none' }}></video>
       <canvas ref={canvasRef} width="640" height="480"></canvas>
-     
+
+      {!isCameraOn && (
+        <button onClick={startCamera}>Play overlay</button>
+      )}
+
+      {isCameraOn && (
+        <button onClick={stopCamera}>Stop overlay</button>
+      )}
     </div>
   );
 };
 
 export default WebcamSegmentation;
-
-
-
-
-
-
-
-
-

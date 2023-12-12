@@ -1,14 +1,24 @@
-
-
-
-/* .overlay-container {
-  position: relative;
-}*/
-
-.overlay-canvas {
-  position: absolute;
+.webcam-popup-container {
+  position: fixed;
   top: 0;
   left: 0;
-  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.5); /* Semi-transparent white background */
+  backdrop-filter: blur(8px); /* Adjust the blur strength as needed */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.webcam-popup {
+  background-color: white; /* Adjust as needed */
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3); /* Box shadow for the popup */
+}
+
+.webcam-popup button {
+  margin-top: 10px;
+  background-color: brown;
+}
